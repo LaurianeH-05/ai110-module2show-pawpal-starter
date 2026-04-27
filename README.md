@@ -58,6 +58,7 @@ flowchart LR
 ```
 
 The diagram file is also available at `assets/system_diagram.mmd`.
+Another version is available in the file: uml_final.png
 
 ## Setup
 
@@ -186,13 +187,6 @@ This harness verifies core behaviors such as:
 - Expand the planning agent for multi-pet shared-resource optimization
 - Add a Loom video walkthrough linked in the README once recorded
 
-## Demo video guide
+## Demo video 
 
-Use `video_script.md` for a polished 5-7 minute walkthrough. It outlines what to show:
-
-- project goals and new AI feature
-- key files and architecture
-- the Streamlit app working end-to-end
-- the reliability harness output
-- the demo script output
-- closing summary and future improvements
+  Video link: https://drive.google.com/file/d/1ftLhNjuqqrtX_x0hrgLnKounUrzzLx14/view?usp=sharing
