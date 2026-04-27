@@ -18,6 +18,7 @@ The base project modeled pet care tasks, owners, pets, schedule sorting, recurre
 
 - Added `pawpal_ai.py` with a rule-based planning agent and explanation pipeline.
 - Extended the UI to present plan reasoning, confidence, and schedule suggestions.
+- Added support for unscheduled tasks and improved schedule persistence so conflict resolution remains visible.
 - Added `reliability_harness.py` to evaluate planner reliability automatically.
 - Added a system architecture asset in `assets/system_diagram.mmd`.
 - Added a model card describing behavior, limitations, and responsible design.
@@ -184,3 +185,14 @@ This harness verifies core behaviors such as:
 - Add optional time-window preferences per pet
 - Expand the planning agent for multi-pet shared-resource optimization
 - Add a Loom video walkthrough linked in the README once recorded
+
+## Demo video guide
+
+Use `video_script.md` for a polished 5-7 minute walkthrough. It outlines what to show:
+
+- project goals and new AI feature
+- key files and architecture
+- the Streamlit app working end-to-end
+- the reliability harness output
+- the demo script output
+- closing summary and future improvements

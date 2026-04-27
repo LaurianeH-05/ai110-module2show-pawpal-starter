@@ -56,6 +56,9 @@ if "owner" not in st.session_state:
     # store the Owner/User instance so it persists across interactions
     st.session_state.owner = None
 
+if "show_schedule" not in st.session_state:
+    st.session_state.show_schedule = False
+
 col1, col2, col3 = st.columns([2, 1, 1])
 with col1:
     task_title = st.text_input("Task title", value="Morning walk")
@@ -64,13 +67,24 @@ with col2:
 with col3:
     priority_str = st.selectbox("Priority", ["high", "medium", "low"], index=1)
 
+unscheduled = st.checkbox("Unscheduled task (no specific time)", value=False)
+
 date_col, time_col, recur_col = st.columns([1, 1, 1])
 with date_col:
-    scheduled_date = st.date_input("Scheduled date", value=date.today())
+    if not unscheduled:
+        scheduled_date = st.date_input("Scheduled date", value=date.today())
+    else:
+        scheduled_date = date.today()
 with time_col:
-    scheduled_time = st.time_input("Scheduled time", value=dtime(hour=9, minute=0))
+    if not unscheduled:
+        scheduled_time = st.time_input("Scheduled time", value=dtime(hour=9, minute=0))
+    else:
+        scheduled_time = dtime(hour=9, minute=0)
 with recur_col:
     recurrence = st.selectbox("Recurrence", ["none", "daily", "weekly"], index=0)
+
+if unscheduled:
+    st.info("This task will be saved without a scheduled time and proposed during planning.")
 
 pet_select_col, add_btn_col = st.columns([3, 1])
 with pet_select_col:
@@ -102,7 +116,7 @@ with add_btn_col:
                 st.error("Selected pet not found. Try reloading the app or re-adding the pet.")
             else:
                 # assemble scheduled datetime
-                scheduled_dt = datetime.combine(scheduled_date, scheduled_time)
+                scheduled_dt = None if unscheduled else datetime.combine(scheduled_date, scheduled_time)
                 recurrence_val = None if recurrence == "none" else recurrence
                 t = Task(
                     name=task_title,
@@ -114,7 +128,10 @@ with add_btn_col:
                 )
                 scheduler = TaskScheduler(f"{pet_to_use.name}Scheduler", pet_to_use, owner)
                 scheduler.schedule_task(t)
-                st.success(f"Task '{t.name}' scheduled for pet {pet_to_use.name} at {scheduled_dt}.")
+                if unscheduled:
+                    st.success(f"Task '{t.name}' saved as unscheduled for pet {pet_to_use.name}.")
+                else:
+                    st.success(f"Task '{t.name}' scheduled for pet {pet_to_use.name} at {scheduled_dt}.")
 
 if st.session_state.owner:
     owner: User = st.session_state.owner
@@ -147,6 +164,9 @@ else:
     scheduler = TaskScheduler(f"{selected_pet.name}Scheduler", selected_pet, owner)
 
     if st.button("Generate schedule"):
+        st.session_state.show_schedule = True
+
+    if st.session_state.show_schedule:
         agent = PawPalAgent(owner, selected_pet)
         outcome = agent.plan_day(date.today())
 
@@ -209,6 +229,8 @@ else:
                             st.success(
                                 f"Moved '{b.name}' to {suggested} to resolve conflict with '{a.name}'."
                             )
+                            st.session_state.show_schedule = True
+                            st.experimental_rerun()
                         except Exception as e:
                             st.error(str(e))
 

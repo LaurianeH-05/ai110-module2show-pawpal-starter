@@ -155,3 +155,21 @@ def test_reliability_harness_reports_all_checks():
     result = run_reliability_checks()
     assert result["total"] == result["passed"]
     assert result["failed"] == 0
+
+
+def test_unscheduled_task_is_proposed_by_agent():
+    from pawpal_ai import PawPalAgent
+
+    owner = User("Zoe")
+    pet = Pet(name="Peanut", type="Cat")
+    owner.log_pet(pet)
+    scheduler = TaskScheduler("PeanutScheduler", pet, owner)
+
+    unscheduled = Task(name="Grooming", scheduled_time=None, duration_minutes=20, priority=1)
+    scheduler.schedule_task(unscheduled)
+
+    agent = PawPalAgent(owner, pet)
+    outcome = agent.plan_day(date.today())
+
+    assert any(t.name == "Grooming" and t.scheduled_time is not None for t in outcome.tasks)
+    assert outcome.confidence >= 0.0 and outcome.confidence <= 1.0
