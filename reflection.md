@@ -1,109 +1,84 @@
-# PawPal+ Project Reflection
+﻿# PawPal+ Project Reflection
 
 ## 1. System Design
 
+### Core actions
+- Add and manage pets
+- Add, edit, reschedule, complete, and cancel tasks
+- Build and explain a daily care plan
 
-3 core actions:
-- Log/add a pet
-- Edit/delete/add tasks
-- Read/View daily plan
+### Main objects
+- `User`: central owner record and task store
+- `Pet`: lightweight pet profile
+- `Task`: task data with scheduling, duration, priority, and recurrence
+- `TaskScheduler`: pet-specific task filtering, conflict detection, and calendar operations
+- `DailyPlan`: ephemeral plan generation for a date
+- `PawPalAgent`: AI-style planner that proposes schedule placements and reasoning steps
 
-Main Objects:
-- User (name, id, password) - logPet, editTask, delTask, addTask, viewPet
-- Pet (name, type) - viewImg
-- taskScheduler (name, petInfo) - taskList
-- dailyPlan (name, petInfo) - generatePlan
+### Design changes during this extension
+Yes. I added an agent component after the initial scheduler design to make the system more responsible and explainable.
 
+Key changes:
+- Added `PawPalAgent` to evaluate daily task plans, detect issues, and propose placements for unscheduled tasks.
+- Kept `User.tasks_by_id` as the single source of truth for tasks across pets and scheduler views.
+- Added a confidence score and explicit reasoning steps for every generated schedule.
+- Added a reliability harness separate from the pytest suite so the system can validate end-to-end behavior.
 
-**a. Initial design**
-
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
-
-I chose User to allow users to interact with the software; the Pet class is essential for the function and purpose of the app. Classes such as taskScheduler and dailyPlan are needed for the core functionalities which include managing a pet's schedule and generating said schedule.
-**b. Design changes**
-
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
-Yes. This iteration focused on clarifying ownership and centralizing task storage to avoid duplicate state and make scheduling deterministic and efficient.
-
-Concrete changes made in this round:
-
-- Added stable unique IDs (UUID4) for `Task` and `Pet` so objects can be serialized and referenced reliably across components.
-- Added `owner_id` to `Pet` and `owner_id`/`pet_id` to `Task` to make ownership explicit (tasks belong to a user and may target a specific pet).
-- Centralized tasks on the `User` as `tasks_by_id: Dict[str, Task]` instead of keeping copies in `TaskScheduler`. This makes lookups and edits O(1) and avoids inconsistencies between multiple copies of the same task.
-- Updated `Task` with optional fields: `recurrence`, `duration_minutes`, and `reminder_offset` to support recurring tasks and reminders.
-- Replaced plaintext password storage with a hashed value (`password_hash`) and added a simple hash helper (SHA-256) as a placeholder (note: in production use bcrypt/argon2).
-- Introduced a `threading.Lock` in `User` to guard mutations, improving basic thread-safety for concurrent edits.
-- Adjusted `TaskScheduler` and `DailyPlan` to read tasks from the user's centralized store (the scheduler filters tasks by `pet_id`), and made daily plans ephemeral by default (generate on-demand).
-
-Why these changes were necessary:
-
-- Ownership clarity: explicit `owner_id` and `pet_id` avoid ambiguity about who is responsible for a task and which pet it targets.
-- Single source of truth: centralizing tasks prevents bugs where one component updates a task but another component still holds a stale copy.
-- Performance: switching to a dict keyed by id gives O(1) lookups/edits, which matters as task count grows.
-- Security & robustness: never storing plaintext passwords and adding a simple lock for thread-safety reduce common security and concurrency pitfalls.
-
-These changes are intentionally minimal and low-risk while preparing the codebase for next steps (persistence, UI wiring, and richer scheduling logic).
----
+These changes made the system easier to reason about and more transparent for users.
 
 ## 2. Scheduling Logic and Tradeoffs
 
-**a. Constraints and priorities**
+### Constraints considered
+- Scheduled task times and durations
+- Task priority
+- Recurrence behavior for daily or weekly tasks
+- Overlapping task conflicts
+- Simultaneous scheduling warnings across pets
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+I chose to prioritize correctness and explainability over a fully optimized scheduler. The agent uses a fixed daily window and gap-filling strategy, which makes it easier to verify and understand.
 
-**b. Tradeoffs**
+### Tradeoffs
+- Simplicity vs. flexibility: The planner assumes an 08:00–20:00 planning window and does not support arbitrary availability or pet-specific time preferences yet.
+- Deterministic rules vs. learning: The system is rule-based, which is more predictable but less adaptive than a learned model.
+- Proposal mode vs. automatic scheduling: Unscheduled tasks are proposed into gaps for the user to review rather than hidden automatic scheduling.
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
-
-Simplicity over richness: The scheduler uses straightforward in-memory datamodels and simple recurrence handling (auto-create the next daily/weekly occurrence). That keeps the code simple and easy
-to reason about, but it trades off:
-Persistence/traceability: created recurring tasks are new Task objects and there's no linkage metadata to the original task (no recurrence-id or series-id), so tracking history or editing the entire series is hard.
-Control for the user: the automatic creation is immediate and unconditional — a power user might prefer a configurable behavior (create-on-completion vs. scheduled-expansion vs. using an rrule engine).
-Scalability: All scheduling and conflict detection are done in-memory and with basic algorithms; for many tasks and users you might want indexed/queryable storage or interval trees for faster conflict queries.
----
+These tradeoffs are reasonable for a demo-grade applied AI system because they keep outputs reliable and explainable.
 
 ## 3. AI Collaboration
 
-**a. How you used AI**
+### How AI was used
+I used Copilot and Copilot Chat to help identify edge cases, draft tests, and suggest possible schedule evaluation strategies.
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+### Good vs. bad suggestions
+- Helpful: AI suggested strong unit tests around conflict detection and recurrence handling, which made it easier to validate planner behavior.
+- Flawed: AI initially suggested a global mutable task list approach, which I rejected because it would have introduced inconsistent state across components.
 
-**b. Judgment and verification**
+I verified AI-assisted suggestions by writing tests and running the suite before accepting changes.
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+## 4. Testing and Reliability
 
----
+### What was tested
+- Task sorting by time
+- Recurrence expansion when completing recurring tasks
+- Conflict detection for overlapping tasks
+- Simultaneous scheduling warnings across pets
+- AI planner proposal and task insertion for unscheduled tasks
+- Confidence score normalization
 
-## 4. Testing and Verification
-
-**a. What you tested**
-
-- What behaviors did you test?
-- Why were these tests important?
-
-**b. Confidence**
-
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
-
----
+### Reliability harness
+The repository now includes `reliability_harness.py`, which runs a small suite of checks and prints a pass/fail summary. This is a lightweight evaluation layer beyond unit tests.
 
 ## 5. Reflection
 
-**a. What went well**
+### What went well
+- The planning agent added meaningful AI behavior without overcomplicating the system.
+- Transparent reasoning and confidence scoring improved trustworthiness.
+- The reliability harness made it easier to validate end-to-end behavior quickly.
 
-- What part of this project are you most satisfied with?
+### What I would improve next
+- Add persistence so tasks survive app restarts
+- Support pet-specific availability and preferred care windows
+- Improve the planner to handle multi-pet coordination and shared resources
 
-**b. What you would improve**
-
-- If you had another iteration, what would you improve or redesign?
-
-**c. Key takeaway**
-
-- What is one important thing you learned about designing systems or working with AI on this project?
+### Key takeaway
+A strong applied AI system is not just the model or planner; it is the combination of logic, explanation, guardrails, and testing that makes the behavior trustworthy.

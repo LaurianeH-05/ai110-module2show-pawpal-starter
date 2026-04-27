@@ -1,5 +1,6 @@
 import streamlit as st
-from pawpal_system import DailyPlan, TaskScheduler, User, Pet, Task
+from pawpal_ai import PawPalAgent
+from pawpal_system import TaskScheduler, User, Pet, Task
 from datetime import datetime, date, time as dtime, timedelta
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
@@ -146,37 +147,29 @@ else:
     scheduler = TaskScheduler(f"{selected_pet.name}Scheduler", selected_pet, owner)
 
     if st.button("Generate schedule"):
-        # get sorted tasks for the pet
-        sorted_tasks = scheduler.sort_by_time()
+        agent = PawPalAgent(owner, selected_pet)
+        outcome = agent.plan_day(date.today())
 
-        if not sorted_tasks:
-            st.info("No tasks scheduled for this pet. Add tasks to see a plan.")
+        if not outcome.tasks:
+            st.info("No plan could be generated for this pet today. Add some tasks to see a suggested schedule.")
         else:
-            st.success(f"{len(sorted_tasks)} task(s) found for {selected_pet.name} — shown in chronological order.")
+            st.success(
+                f"Generated a plan for {selected_pet.name} with {len(outcome.tasks)} total task(s)."
+            )
 
-            # Explain the schedule in plain language
-            scheduled_only = [t for t in sorted_tasks if t.scheduled_time]
-            if scheduled_only:
-                earliest = min(s.scheduled_time for s in scheduled_only)
-                latest = max(s.scheduled_time + (timedelta(minutes=s.duration_minutes) if s.duration_minutes else timedelta(minutes=30)) for s in scheduled_only)
-                total_minutes = sum((t.duration_minutes if t.duration_minutes else 30) for t in scheduled_only)
-                gaps = []
-                scheduled_only_sorted = sorted(scheduled_only, key=lambda x: x.scheduled_time)
-                for i in range(len(scheduled_only_sorted) - 1):
-                    end_i = scheduled_only_sorted[i].scheduled_time + (timedelta(minutes=scheduled_only_sorted[i].duration_minutes) if scheduled_only_sorted[i].duration_minutes else timedelta(minutes=30))
-                    start_j = scheduled_only_sorted[i+1].scheduled_time
-                    gap = (start_j - end_i).total_seconds() / 60
-                    if gap > 0:
-                        gaps.append(int(gap))
+            st.info(f"Plan confidence: {outcome.confidence:.2f}  |  Score: {outcome.score:.2f}")
 
-                explanation = f"Schedule covers {len(scheduled_only)} scheduled task(s) from {earliest.strftime('%Y-%m-%d %H:%M')} to {latest.strftime('%Y-%m-%d %H:%M')}, totaling ~{total_minutes} minutes."
-                if gaps:
-                    explanation += f" Gaps between tasks (minutes): {', '.join(str(g) for g in gaps)}."
-                st.info(explanation)
+            with st.expander("Plan reasoning steps", expanded=True):
+                for step in outcome.explanation_steps:
+                    st.write(f"- {step}")
 
-            # Show each task with actions (Complete / Edit / Reschedule / Cancel)
-            for t in sorted_tasks:
-                title_time = t.scheduled_time.strftime("%Y-%m-%d %H:%M") if t.scheduled_time else "(no time)"
+            if outcome.warnings:
+                st.error("Warnings detected across pets and tasks:")
+                for warning in outcome.warnings:
+                    st.warning(warning)
+
+            for t in outcome.tasks:
+                title_time = t.scheduled_time.strftime("%Y-%m-%d %H:%M") if t.scheduled_time else "(unscheduled)"
                 header = f"{t.name} — {title_time}"
                 with st.expander(header, expanded=False):
                     st.write({
@@ -188,91 +181,11 @@ else:
                         "Completed": t.completed,
                     })
 
-                    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
-                    # Complete button
-                    if c1.button("Complete", key=f"complete_{t.id}"):
-                        try:
-                            scheduler.mark_task_complete(t.id)
-                            st.success(f"Marked '{t.name}' complete. If recurring, next occurrence has been scheduled.")
-                        except Exception as e:
-                            st.error(str(e))
-
-                    # Edit button — toggles an inline edit form
-                    edit_key = f"edit_{t.id}"
-                    if edit_key not in st.session_state:
-                        st.session_state[edit_key] = False
-
-                    if c2.button("Edit", key=f"edit_btn_{t.id}"):
-                        st.session_state[edit_key] = True
-
-                    if st.session_state.get(edit_key):
-                        new_name = st.text_input("Name", value=t.name, key=f"edit_name_{t.id}")
-                        new_duration = st.number_input("Duration (minutes)", min_value=1, max_value=1440, value=t.duration_minutes or 30, key=f"edit_dur_{t.id}")
-                        pr_map = {0: "high", 1: "medium", 2: "low"}
-                        rev_map = {v: k for k, v in pr_map.items()}
-                        cur_pr = pr_map.get(t.priority, "medium")
-                        new_pr_str = st.selectbox("Priority", ["high", "medium", "low"], index=["high", "medium", "low"].index(cur_pr), key=f"edit_pr_{t.id}")
-                        new_recur = st.selectbox("Recurrence", ["none", "daily", "weekly"], index=["none", "daily", "weekly"].index(t.recurrence if t.recurrence else "none"), key=f"edit_recur_{t.id}")
-                        nd_date = st.date_input("Scheduled date", value=t.scheduled_time.date() if t.scheduled_time else date.today(), key=f"edit_date_{t.id}")
-                        nd_time = st.time_input("Scheduled time", value=t.scheduled_time.time() if t.scheduled_time else dtime(hour=9), key=f"edit_time_{t.id}")
-                        if st.button("Apply edit", key=f"apply_edit_{t.id}"):
-                            try:
-                                new_dt = datetime.combine(nd_date, nd_time)
-                                owner.edit_task(t.id, name=new_name, scheduled_time=new_dt, duration_minutes=int(new_duration), priority=rev_map.get(new_pr_str, 1), recurrence=(None if new_recur == "none" else new_recur))
-                                st.success(f"Updated '{new_name}'.")
-                                st.session_state[edit_key] = False
-                            except Exception as e:
-                                st.error(str(e))
-
-                    # Reschedule flow using session_state flag
-                    res_key = f"reschedule_{t.id}"
-                    if res_key not in st.session_state:
-                        st.session_state[res_key] = False
-
-                    if c3.button("Reschedule", key=f"res_btn_{t.id}"):
-                        st.session_state[res_key] = True
-
-                    if st.session_state.get(res_key):
-                        # show date/time pickers and apply button
-                        new_date = st.date_input("New date", value=t.scheduled_time.date() if t.scheduled_time else date.today(), key=f"res_date_{t.id}")
-                        new_time = st.time_input("New time", value=t.scheduled_time.time() if t.scheduled_time else dtime(hour=9), key=f"res_time_{t.id}")
-                        if st.button("Apply reschedule", key=f"apply_res_{t.id}"):
-                            new_dt = datetime.combine(new_date, new_time)
-                            try:
-                                scheduler.reschedule_task(t.id, new_dt)
-                                st.success(f"Rescheduled '{t.name}' to {new_dt}.")
-                                st.session_state[res_key] = False
-                            except Exception as e:
-                                st.error(str(e))
-
-                    # Cancel (delete) flow with confirmation
-                    confirm_key = f"confirm_cancel_{t.id}"
-                    if confirm_key not in st.session_state:
-                        st.session_state[confirm_key] = False
-
-                    if c4.button("Cancel", key=f"cancel_{t.id}"):
-                        st.session_state[confirm_key] = True
-
-                    if st.session_state.get(confirm_key):
-                        st.warning(f"Are you sure you want to delete '{t.name}'? This action cannot be undone.")
-                        c_yes, c_no = st.columns([1, 1])
-                        if c_yes.button("Yes, delete", key=f"yes_del_{t.id}"):
-                            try:
-                                scheduler.cancel_task(t.id)
-                                st.success(f"Deleted '{t.name}'.")
-                                st.session_state[confirm_key] = False
-                            except Exception as e:
-                                st.error(str(e))
-                        if c_no.button("No, keep", key=f"no_del_{t.id}"):
-                            st.info("Deletion cancelled.")
-                            st.session_state[confirm_key] = False
-
-            # show conflicts (overlaps)
             conflicts = scheduler.detect_conflicts()
             if conflicts:
-                # stronger, attention-grabbing conflict banner
-                st.error(f"⚠️ {len(conflicts)} scheduling conflict(s) detected — please resolve these to avoid missed care.")
-                # show concise conflict pairs in a table with action buttons to suggest a fix
+                st.error(
+                    f"⚠️ {len(conflicts)} scheduling conflict(s) detected — please resolve these to avoid missed care."
+                )
                 conflict_rows = []
                 for a, b in conflicts:
                     conflict_rows.append(
@@ -284,22 +197,21 @@ else:
                         }
                     )
                 st.table(conflict_rows)
-                st.markdown(
-                    "**Suggested quick fixes:** Use the Reschedule action on one of the conflicting tasks below, or click the suggested resolution button to automatically move the later task just after the earlier task."
-                )
-                # provide auto-resolve suggestions
                 for a, b in conflicts:
-                    # suggest moving task b after a
                     a_duration = timedelta(minutes=a.duration_minutes) if a.duration_minutes else timedelta(minutes=30)
                     suggested = a.scheduled_time + a_duration + timedelta(minutes=5)
-                    if st.button(f"Resolve: move '{b.name}' after '{a.name}'", key=f"resolve_{a.id}_{b.id}"):
+                    if st.button(
+                        f"Resolve: move '{b.name}' after '{a.name}'",
+                        key=f"resolve_{a.id}_{b.id}",
+                    ):
                         try:
                             scheduler.reschedule_task(b.id, suggested)
-                            st.success(f"Moved '{b.name}' to {suggested} to resolve conflict with '{a.name}'.")
+                            st.success(
+                                f"Moved '{b.name}' to {suggested} to resolve conflict with '{a.name}'."
+                            )
                         except Exception as e:
                             st.error(str(e))
 
-            # show simultaneous scheduling warnings across owner's tasks
             sim_warnings = scheduler.detect_simultaneous_tasks()
             if sim_warnings:
                 for w in sim_warnings:

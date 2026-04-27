@@ -1,0 +1,20 @@
+flowchart LR
+    Owner[Owner/User]
+    Pet[Pet Data]
+    TaskStore[Task Store (User.tasks_by_id)]
+    Scheduler[TaskScheduler]
+    Agent[PawPalAgent Planning]
+    Plan[DailyPlan]
+    UI[Streamlit UI]
+    Harness[Reliability Harness]
+
+    Owner --> Pet
+    Owner --> TaskStore
+    TaskStore --> Scheduler
+    Scheduler --> Agent
+    Agent --> Plan
+    Plan --> UI
+    Agent --> UI
+    Harness --> Agent
+    Harness --> Scheduler
+    Harness --> TaskStore

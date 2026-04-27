@@ -124,3 +124,34 @@ def test_daily_plan_empty_when_no_tasks():
     plan = DailyPlan("daily", pet, scheduler)
     today = datetime.now().date()
     assert plan.view_plan(today) == []
+
+
+def test_agent_plans_unscheduled_task_into_free_gap():
+    from pawpal_ai import PawPalAgent
+
+    owner = User("Kai")
+    pet = Pet(name="Buddy", type="Dog")
+    owner.log_pet(pet)
+    scheduler = TaskScheduler("BuddyScheduler", pet, owner)
+
+    today = datetime.now().date()
+    base = datetime.combine(today, datetime.min.time()).replace(hour=8)
+    t1 = Task(name="Walk", scheduled_time=base, duration_minutes=30, priority=0, pet_id=pet.id, owner_id=owner.id)
+    t2 = Task(name="Feed", duration_minutes=20, priority=1, pet_id=pet.id, owner_id=owner.id)
+
+    scheduler.schedule_task(t1)
+    scheduler.schedule_task(t2)
+
+    agent = PawPalAgent(owner, pet)
+    outcome = agent.plan_day(today)
+
+    assert any(t.name == "Feed" and t.scheduled_time is not None for t in outcome.tasks)
+    assert outcome.confidence >= 0.0 and outcome.confidence <= 1.0
+
+
+def test_reliability_harness_reports_all_checks():
+    from reliability_harness import run_reliability_checks
+
+    result = run_reliability_checks()
+    assert result["total"] == result["passed"]
+    assert result["failed"] == 0
