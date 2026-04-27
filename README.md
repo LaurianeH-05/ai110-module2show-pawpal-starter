@@ -36,14 +36,14 @@ The system is organized into these main components:
 
 ```mermaid
 flowchart LR
-    Owner[Owner/User]
-    Pet[Pet Data]
-    TaskStore[Task Store (User.tasks_by_id)]
-    Scheduler[TaskScheduler]
-    Agent[PawPalAgent Planning]
-    Plan[DailyPlan]
-    UI[Streamlit UI]
-    Harness[Reliability Harness]
+    Owner["Owner / User"]
+    Pet["Pet Data"]
+    TaskStore["Task Store (User.tasks_by_id)"]
+    Scheduler["TaskScheduler"]
+    Agent["PawPalAgent Planning"]
+    Plan["DailyPlan"]
+    UI["Streamlit UI"]
+    Harness["Reliability Harness"]
 
     Owner --> Pet
     Owner --> TaskStore
